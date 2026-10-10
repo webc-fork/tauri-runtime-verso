@@ -60,10 +60,29 @@ pub fn get_verso_as_external_bin() -> io::Result<()> {
     std::fs::rename(extracted_versoview_path, &output_executable)?;
     std::fs::write(&output_version, versoview_build::VERSO_VERSION)?;
 
+    wait_for_executable_readable(&output_executable);
+
     println!("cargo:rerun-if-changed={}", output_executable.display());
     println!("cargo:rerun-if-changed={}", output_version.display());
 
     Ok(())
+}
+
+/// The antivirus on Windows can hold a lock on the freshly downloaded executable
+/// for a bit, wait for it to become readable again before returning,
+/// `tauri_build::build` copies this file right after.
+fn wait_for_executable_readable(path: &std::path::Path) {
+    for _ in 0..20 {
+        match std::fs::File::open(path) {
+            Ok(_) => return,
+            // ERROR_SHARING_VIOLATION, the file is locked by another process
+            Err(error) if error.raw_os_error() == Some(32) => {
+                std::thread::sleep(std::time::Duration::from_millis(500));
+            }
+            Err(error) => panic!("Failed to read the downloaded versoview executable: {error}"),
+        }
+    }
+    panic!("The downloaded versoview executable stayed locked for more than 10 seconds");
 }
 
 /// Removes the sidecar copy of versoview from the cargo target directory if it exists.
