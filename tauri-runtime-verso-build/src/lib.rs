@@ -65,3 +65,33 @@ pub fn get_verso_as_external_bin() -> io::Result<()> {
 
     Ok(())
 }
+
+/// Removes the sidecar copy of versoview from the cargo target directory if it exists.
+///
+/// Call this before [`tauri_build::build`](https://docs.rs/tauri-build/latest/tauri_build/fn.build.html),
+/// which panics when it can't remove an existing copy itself. That transiently happens on
+/// Windows while the antivirus scans a freshly copied versoview executable,
+/// so remove it here with retries instead.
+pub fn remove_stale_sidecar_copy() {
+    let extension = if cfg!(windows) { ".exe" } else { "" };
+    let target_triple = std::env::var("TARGET").unwrap();
+    let sidecar_copy = std::env::var_os("OUT_DIR")
+        .map(PathBuf::from)
+        // OUT_DIR is `<target>/<profile>/build/<package>/out`,
+        // the sidecar copy lives in `<target>/<profile>`
+        .and_then(|out_dir| out_dir.ancestors().nth(3).map(|dir| dir.to_path_buf()))
+        .map(|dir| dir.join(format!("versoview-{target_triple}{extension}")));
+
+    let Some(sidecar_copy) = sidecar_copy else {
+        return;
+    };
+
+    for _ in 0..10 {
+        match std::fs::remove_file(&sidecar_copy) {
+            // The copy is gone, or never existed, `tauri_build::build` can proceed
+            Ok(()) => return,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return,
+            Err(_) => std::thread::sleep(std::time::Duration::from_millis(500)),
+        }
+    }
+}
