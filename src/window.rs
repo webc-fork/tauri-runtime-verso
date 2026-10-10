@@ -501,7 +501,7 @@ impl<T: UserEvent> WindowDispatch<T> for VersoWindowDispatcher<T> {
         target_os = "openbsd"
     ))]
     fn gtk_window(&self) -> Result<*mut std::ffi::c_void> {
-        Err(Error::FailedToSendMessage)
+        Err(tauri_runtime::Error::FailedToSendMessage)
     }
 
     /// Unsupported, always fails with an error,
@@ -514,7 +514,7 @@ impl<T: UserEvent> WindowDispatch<T> for VersoWindowDispatcher<T> {
         target_os = "openbsd"
     ))]
     fn default_vbox(&self) -> Result<*mut std::ffi::c_void> {
-        Err(Error::FailedToSendMessage)
+        Err(tauri_runtime::Error::FailedToSendMessage)
     }
 
     /// Unsupported, has no effect when called
