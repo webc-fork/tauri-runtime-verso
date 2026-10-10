@@ -21,10 +21,10 @@ macos-private-api = ["tauri-runtime/macos-private-api"]
 
 [dependencies]
 verso = { workspace = true }
-tauri = { version = "=2.7.0", default-features = false }
-tauri-runtime = "=2.7.1"
-tauri-utils = "=2.6.0"
-tao = "0.34"
+tauri = { version = "=2.12.2", default-features = false }
+tauri-runtime = "=2.12.1"
+tauri-utils = "=2.10.1"
+tao = "0.37"
 raw-window-handle = "0.6"
 url = "2"
 http = "1"
@@ -32,7 +32,7 @@ percent-encoding = "2"
 log = "0.4"
 
 [target."cfg(windows)".dependencies]
-windows = "0.61"
+windows = "0.62"
 
 [target."cfg(any(target_os = \"linux\", target_os = \"dragonfly\", target_os = \"freebsd\", target_os = \"openbsd\", target_os = \"netbsd\"))".dependencies]
 gtk = { version = "0.18", features = ["v3_24"] }
@@ -44,5 +44,8 @@ objc2-app-kit = { version = "0.3", features = ["NSScreen"] }
 # verso = { path = "../verso/verso" }
 # versoview_build = { path = "../verso/versoview_build" }
 
-[lints.clippy]
+[workspace.lints.clippy]
 needless_doctest_main = "allow"
+
+[lints]
+workspace = true

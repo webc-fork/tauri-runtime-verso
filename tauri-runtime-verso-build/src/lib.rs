@@ -7,10 +7,8 @@
 //! To use it, first add it to your build dependency, and in your build script:
 //!
 //! ```no_run
-//! fn main() {
-//!     tauri_runtime_verso_build::get_verso_as_external_bin().unwrap();
-//!     tauri_build::build();
-//! }
+//! tauri_runtime_verso_build::get_verso_as_external_bin().unwrap();
+//! tauri_build::build();
 //! ```
 //!
 //! and in your tauri config file (`tauri.conf.json`), add the following

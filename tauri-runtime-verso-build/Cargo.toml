@@ -3,5 +3,11 @@ name = "tauri-runtime-verso-build"
 version = "0.1.0"
 edition = "2024"
 
+[lints]
+workspace = true
+
 [dependencies]
 versoview_build = { workspace = true }
+
+[dev-dependencies]
+tauri-build = "2"

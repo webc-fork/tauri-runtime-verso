@@ -1,0 +1,26 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "tauri-runtime-verso",
+  "version": "0.1.0",
+  "identifier": "org.versotile.tauri-runtime-verso",
+  "build": {
+    "frontendDist": []
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "windows": [
+      {
+        "label": "main",
+        "title": "tauri-runtime-verso",
+        "width": 800,
+        "height": 600
+      }
+    ]
+  },
+  "bundle": {
+    "active": false,
+    "icon": [
+      "examples/.icons/icon.png"
+    ]
+  }
+}

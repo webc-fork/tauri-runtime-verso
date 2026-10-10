@@ -2,7 +2,7 @@
 
 use tauri::{LogicalPosition, LogicalSize};
 use tauri_runtime::{
-    Error, Icon, ProgressBarState, Result, UserAttentionType, UserEvent, WindowDispatch,
+    Icon, ProgressBarState, Result, UserAttentionType, UserEvent, WindowDispatch,
     WindowEventId,
     dpi::{PhysicalPosition, PhysicalSize, Position, Size},
     monitor::Monitor,
@@ -25,10 +25,9 @@ use std::{
 
 use crate::{
     RuntimeContext, VersoRuntime,
-    event_loop_ext::TaoEventLoopWindowTargetExt,
     get_verso_devtools_port, get_verso_resource_directory,
     runtime::Message,
-    utils::{from_verso_theme, to_verso_theme},
+    utils::{from_verso_theme, to_verso_theme, with_controller},
 };
 
 pub(crate) struct Window {
@@ -96,7 +95,7 @@ impl WindowBuilder for VersoWindowBuilder {
         Self {
             verso_builder,
             has_icon: false,
-            theme: None,
+            theme: config.theme,
         }
     }
 
@@ -172,6 +171,11 @@ impl WindowBuilder for VersoWindowBuilder {
         self
     }
 
+    /// Unsupported, has no effect
+    fn focusable(self, focusable: bool) -> Self {
+        self
+    }
+
     fn maximized(mut self, maximized: bool) -> Self {
         self.verso_builder = self.verso_builder.maximized(maximized);
         self
@@ -189,7 +193,7 @@ impl WindowBuilder for VersoWindowBuilder {
 
     fn always_on_bottom(mut self, always_on_bottom: bool) -> Self {
         self.verso_builder = self.verso_builder.window_level(if always_on_bottom {
-            verso::WindowLevel::AlwaysOnTop
+            verso::WindowLevel::AlwaysOnBottom
         } else {
             verso::WindowLevel::Normal
         });
@@ -331,6 +335,16 @@ impl WindowBuilder for VersoWindowBuilder {
         self
     }
 
+    #[cfg(all(target_os = "macos", not(feature = "macos-private-api")))]
+    fn transparent(self, transparent: bool) -> Self {
+        self
+    }
+
+    /// Unsupported, has no effect
+    fn no_redirection_bitmap(self, enable: bool) -> Self {
+        self
+    }
+
     /// Unsupported, has no effect
     fn prevent_overflow(self) -> Self {
         self
@@ -356,7 +370,7 @@ pub struct VersoWindowDispatcher<T: UserEvent> {
 
 impl<T: UserEvent> Debug for VersoWindowDispatcher<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("VersoWebviewDispatcher")
+        f.debug_struct("VersoWindowDispatcher")
             .field("id", &self.id)
             .field("context", &self.context)
             .field("webview", &"VersoviewController")
@@ -384,11 +398,7 @@ impl<T: UserEvent> WindowDispatch<T> for VersoWindowDispatcher<T> {
     }
 
     fn scale_factor(&self) -> Result<f64> {
-        self.webview
-            .lock()
-            .unwrap()
-            .get_scale_factor()
-            .map_err(|_| Error::FailedToSendMessage)
+        with_controller(&self.webview, |c| c.get_scale_factor())
     }
 
     /// Returns the position of the top-left hand corner of the window's client area relative to the top-left hand corner of the desktop.
@@ -397,12 +407,7 @@ impl<T: UserEvent> WindowDispatch<T> for VersoWindowDispatcher<T> {
     ///
     /// **Wayland**: always return `PhysicalPosition { x: 0, y: 0 }`
     fn inner_position(&self) -> Result<PhysicalPosition<i32>> {
-        Ok(self
-            .webview
-            .lock()
-            .unwrap()
-            .get_inner_position()
-            .map_err(|_| Error::FailedToSendMessage)?
+        Ok(with_controller(&self.webview, |c| c.get_inner_position())?
             .unwrap_or_default())
     }
 
@@ -412,53 +417,28 @@ impl<T: UserEvent> WindowDispatch<T> for VersoWindowDispatcher<T> {
     ///
     /// **Wayland**: always return `PhysicalPosition { x: 0, y: 0 }`
     fn outer_position(&self) -> Result<PhysicalPosition<i32>> {
-        Ok(self
-            .webview
-            .lock()
-            .unwrap()
-            .get_outer_position()
-            .map_err(|_| Error::FailedToSendMessage)?
+        Ok(with_controller(&self.webview, |c| c.get_outer_position())?
             .unwrap_or_default())
     }
 
     fn inner_size(&self) -> Result<PhysicalSize<u32>> {
-        self.webview
-            .lock()
-            .unwrap()
-            .get_inner_size()
-            .map_err(|_| Error::FailedToSendMessage)
+        with_controller(&self.webview, |c| c.get_inner_size())
     }
 
     fn outer_size(&self) -> Result<PhysicalSize<u32>> {
-        self.webview
-            .lock()
-            .unwrap()
-            .get_outer_size()
-            .map_err(|_| Error::FailedToSendMessage)
+        with_controller(&self.webview, |c| c.get_outer_size())
     }
 
     fn is_fullscreen(&self) -> Result<bool> {
-        self.webview
-            .lock()
-            .unwrap()
-            .is_fullscreen()
-            .map_err(|_| Error::FailedToSendMessage)
+        with_controller(&self.webview, |c| c.is_fullscreen())
     }
 
     fn is_minimized(&self) -> Result<bool> {
-        self.webview
-            .lock()
-            .unwrap()
-            .is_minimized()
-            .map_err(|_| Error::FailedToSendMessage)
+        with_controller(&self.webview, |c| c.is_minimized())
     }
 
     fn is_maximized(&self) -> Result<bool> {
-        self.webview
-            .lock()
-            .unwrap()
-            .is_maximized()
-            .map_err(|_| Error::FailedToSendMessage)
+        with_controller(&self.webview, |c| c.is_maximized())
     }
 
     /// Unsupported, always returns false
@@ -492,19 +472,11 @@ impl<T: UserEvent> WindowDispatch<T> for VersoWindowDispatcher<T> {
     }
 
     fn is_visible(&self) -> Result<bool> {
-        self.webview
-            .lock()
-            .unwrap()
-            .is_visible()
-            .map_err(|_| Error::FailedToSendMessage)
+        with_controller(&self.webview, |c| c.is_visible())
     }
 
     fn title(&self) -> Result<String> {
-        self.webview
-            .lock()
-            .unwrap()
-            .get_title()
-            .map_err(|_| Error::FailedToSendMessage)
+        with_controller(&self.webview, |c| c.get_title())
     }
 
     /// Unsupported, always returns [`None`]
@@ -513,27 +485,19 @@ impl<T: UserEvent> WindowDispatch<T> for VersoWindowDispatcher<T> {
     }
 
     fn primary_monitor(&self) -> Result<Option<Monitor>> {
-        self.context
-            .run_on_main_thread_with_event_loop(|e| e.tauri_primary_monitor())
+        self.context.primary_monitor()
     }
 
     fn monitor_from_point(&self, x: f64, y: f64) -> Result<Option<Monitor>> {
-        self.context
-            .run_on_main_thread_with_event_loop(move |e| e.tauri_monitor_from_point(x, y))
+        self.context.monitor_from_point(x, y)
     }
 
     fn available_monitors(&self) -> Result<Vec<Monitor>> {
-        self.context
-            .run_on_main_thread_with_event_loop(|e| e.tauri_available_monitors())
+        self.context.available_monitors()
     }
 
     fn theme(&self) -> Result<Theme> {
-        let theme = self
-            .webview
-            .lock()
-            .unwrap()
-            .get_theme()
-            .map_err(|_| Error::FailedToSendMessage)?;
+        let theme = with_controller(&self.webview, |c| c.get_theme())?;
         Ok(from_verso_theme(theme))
     }
 
@@ -612,66 +576,31 @@ impl<T: UserEvent> WindowDispatch<T> for VersoWindowDispatcher<T> {
     }
 
     fn set_title<S: Into<String>>(&self, title: S) -> Result<()> {
-        self.webview
-            .lock()
-            .unwrap()
-            .set_title(title)
-            .map_err(|_| Error::FailedToSendMessage)?;
-        Ok(())
+        with_controller(&self.webview, |c| c.set_title(title))
     }
 
     fn maximize(&self) -> Result<()> {
-        self.webview
-            .lock()
-            .unwrap()
-            .set_maximized(true)
-            .map_err(|_| Error::FailedToSendMessage)?;
-        Ok(())
+        with_controller(&self.webview, |c| c.set_maximized(true))
     }
 
     fn unmaximize(&self) -> Result<()> {
-        self.webview
-            .lock()
-            .unwrap()
-            .set_maximized(false)
-            .map_err(|_| Error::FailedToSendMessage)?;
-        Ok(())
+        with_controller(&self.webview, |c| c.set_maximized(false))
     }
 
     fn minimize(&self) -> Result<()> {
-        self.webview
-            .lock()
-            .unwrap()
-            .set_minimized(true)
-            .map_err(|_| Error::FailedToSendMessage)?;
-        Ok(())
+        with_controller(&self.webview, |c| c.set_minimized(true))
     }
 
     fn unminimize(&self) -> Result<()> {
-        self.webview
-            .lock()
-            .unwrap()
-            .set_minimized(false)
-            .map_err(|_| Error::FailedToSendMessage)?;
-        Ok(())
+        with_controller(&self.webview, |c| c.set_minimized(false))
     }
 
     fn show(&self) -> Result<()> {
-        self.webview
-            .lock()
-            .unwrap()
-            .set_visible(true)
-            .map_err(|_| Error::FailedToSendMessage)?;
-        Ok(())
+        with_controller(&self.webview, |c| c.set_visible(true))
     }
 
     fn hide(&self) -> Result<()> {
-        self.webview
-            .lock()
-            .unwrap()
-            .set_visible(false)
-            .map_err(|_| Error::FailedToSendMessage)?;
-        Ok(())
+        with_controller(&self.webview, |c| c.set_visible(false))
     }
 
     fn close(&self) -> Result<()> {
@@ -695,29 +624,19 @@ impl<T: UserEvent> WindowDispatch<T> for VersoWindowDispatcher<T> {
     }
 
     fn set_always_on_bottom(&self, always_on_bottom: bool) -> Result<()> {
-        self.webview
-            .lock()
-            .unwrap()
-            .set_window_level(if always_on_bottom {
+        with_controller(&self.webview, |c| c.set_window_level(if always_on_bottom {
                 verso::WindowLevel::AlwaysOnBottom
             } else {
                 verso::WindowLevel::Normal
-            })
-            .map_err(|_| Error::FailedToSendMessage)?;
-        Ok(())
+            }))
     }
 
     fn set_always_on_top(&self, always_on_top: bool) -> Result<()> {
-        self.webview
-            .lock()
-            .unwrap()
-            .set_window_level(if always_on_top {
+        with_controller(&self.webview, |c| c.set_window_level(if always_on_top {
                 verso::WindowLevel::AlwaysOnTop
             } else {
                 verso::WindowLevel::Normal
-            })
-            .map_err(|_| Error::FailedToSendMessage)?;
-        Ok(())
+            }))
     }
 
     /// Unsupported, has no effect when called
@@ -731,12 +650,7 @@ impl<T: UserEvent> WindowDispatch<T> for VersoWindowDispatcher<T> {
     }
 
     fn set_size(&self, size: Size) -> Result<()> {
-        self.webview
-            .lock()
-            .unwrap()
-            .set_size(size)
-            .map_err(|_| Error::FailedToSendMessage)?;
-        Ok(())
+        with_controller(&self.webview, |c| c.set_size(size))
     }
 
     /// Unsupported, has no effect when called
@@ -750,29 +664,30 @@ impl<T: UserEvent> WindowDispatch<T> for VersoWindowDispatcher<T> {
     }
 
     fn set_position(&self, position: Position) -> Result<()> {
-        self.webview
-            .lock()
-            .unwrap()
-            .set_position(position)
-            .map_err(|_| Error::FailedToSendMessage)?;
-        Ok(())
+        with_controller(&self.webview, |c| c.set_position(position))
     }
 
     fn set_fullscreen(&self, fullscreen: bool) -> Result<()> {
-        self.webview
-            .lock()
-            .unwrap()
-            .set_fullscreen(fullscreen)
-            .map_err(|_| Error::FailedToSendMessage)?;
+        with_controller(&self.webview, |c| c.set_fullscreen(fullscreen))
+    }
+
+    /// Unsupported, has no effect when called
+    fn set_fullscreen_on_monitor(&self, position: PhysicalPosition<f64>) -> Result<()> {
+        Ok(())
+    }
+
+    #[cfg(target_os = "macos")]
+    /// Unsupported, has no effect when called
+    fn set_simple_fullscreen(&self, enable: bool) -> Result<()> {
         Ok(())
     }
 
     fn set_focus(&self) -> Result<()> {
-        self.webview
-            .lock()
-            .unwrap()
-            .focus()
-            .map_err(|_| Error::FailedToSendMessage)?;
+        with_controller(&self.webview, |c| c.focus())
+    }
+
+    /// Unsupported, has no effect when called
+    fn set_focusable(&self, focusable: bool) -> Result<()> {
         Ok(())
     }
 
@@ -812,12 +727,7 @@ impl<T: UserEvent> WindowDispatch<T> for VersoWindowDispatcher<T> {
     }
 
     fn start_dragging(&self) -> Result<()> {
-        self.webview
-            .lock()
-            .unwrap()
-            .start_dragging()
-            .map_err(|_| Error::FailedToSendMessage)?;
-        Ok(())
+        with_controller(&self.webview, |c| c.start_dragging())
     }
 
     /// Unsupported, has no effect when called
@@ -859,12 +769,7 @@ impl<T: UserEvent> WindowDispatch<T> for VersoWindowDispatcher<T> {
     }
 
     fn set_theme(&self, theme: Option<Theme>) -> Result<()> {
-        self.webview
-            .lock()
-            .unwrap()
-            .set_theme(theme.map(to_verso_theme))
-            .map_err(|_| Error::FailedToSendMessage)?;
-        Ok(())
+        with_controller(&self.webview, |c| c.set_theme(theme.map(to_verso_theme)))
     }
 
     /// Unsupported, has no effect when called

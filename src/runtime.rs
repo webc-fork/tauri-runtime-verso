@@ -82,7 +82,7 @@ unsafe impl<T: UserEvent> Sync for DispatcherMainThreadContext<T> {}
 #[derive(Clone)]
 pub struct RuntimeContext<T: UserEvent> {
     windows: Arc<Mutex<HashMap<WindowId, Window>>>,
-    prefered_theme: Arc<Mutex<Option<Theme>>>,
+    preferred_theme: Arc<Mutex<Option<Theme>>>,
     event_proxy: TaoEventLoopProxy<Message<T>>,
     // This must only be used on main thread
     main_thread: DispatcherMainThreadContext<T>,
@@ -135,6 +135,41 @@ impl<T: UserEvent> RuntimeContext<T> {
             .map_err(|_| tauri_runtime::Error::FailedToReceiveMessage)
     }
 
+    pub fn primary_monitor(&self) -> Result<Option<Monitor>> {
+        self.run_on_main_thread_with_event_loop(|e| e.tauri_primary_monitor())
+    }
+
+    pub fn monitor_from_point(&self, x: f64, y: f64) -> Result<Option<Monitor>> {
+        self.run_on_main_thread_with_event_loop(move |e| e.tauri_monitor_from_point(x, y))
+    }
+
+    pub fn available_monitors(&self) -> Result<Vec<Monitor>> {
+        self.run_on_main_thread_with_event_loop(|e| e.tauri_available_monitors())
+    }
+
+    /// Stores the preferred theme for the future windows
+    /// and applies it to all the created webviews.
+    pub fn set_webviews_theme(&self, theme: Option<Theme>) {
+        *self.preferred_theme.lock().unwrap() = theme;
+        // Collect the controllers first to not hold the windows lock while locking each webview
+        let controllers: Vec<_> = self
+            .windows
+            .lock()
+            .unwrap()
+            .values()
+            .map(|window| window.webview.clone())
+            .collect();
+        for webview in controllers {
+            if let Err(error) = webview
+                .lock()
+                .unwrap()
+                .set_theme(theme.map(to_verso_theme))
+            {
+                log::error!("Failed to set the theme for webview: {error}");
+            }
+        }
+    }
+
     pub fn next_window_id(&self) -> WindowId {
         self.next_window_id.fetch_add(1, Ordering::Relaxed).into()
     }
@@ -178,7 +213,7 @@ impl<T: UserEvent> RuntimeContext<T> {
         let mut window_builder = pending.window_builder;
 
         if window_builder.get_theme().is_none() {
-            window_builder = window_builder.theme(*self.prefered_theme.lock().unwrap());
+            window_builder = window_builder.theme(*self.preferred_theme.lock().unwrap());
         }
 
         let webview = window_builder
@@ -198,7 +233,8 @@ impl<T: UserEvent> RuntimeContext<T> {
             )
             .build(get_verso_path(), Url::parse(&pending_webview.url).unwrap());
 
-        let webview_label = label.clone();
+        let webview_label: Arc<str> = label.clone().into();
+        let use_https = pending_webview.webview_attributes.use_https_scheme;
         let sender = self.event_proxy.clone();
         let uri_scheme_protocols: HashMap<_, _> = pending_webview
             .uri_scheme_protocols
@@ -212,46 +248,35 @@ impl<T: UserEvent> RuntimeContext<T> {
                 // that it doesn't include Origin header, so I hard coded this for now
                 if !request.headers().contains_key("Origin") {
                     #[cfg(windows)]
-                    let uri = {
-                        let scheme = if pending_webview.webview_attributes.use_https_scheme {
-                            "https"
-                        } else {
-                            "http"
-                        };
-                        format!("{scheme}://tauri.localhost")
-                    };
+                    let uri = if use_https { "https://tauri.localhost" } else { "http://tauri.localhost" };
                     #[cfg(not(windows))]
                     let uri = "tauri://localhost";
                     request.headers_mut().insert("Origin", uri.parse().unwrap());
                 }
-                for (scheme, handler) in &uri_scheme_protocols {
-                    // Since servo doesn't support body in its EmbedderMsg::WebResourceRequested yet,
-                    // we use a header instead for now
-                    if scheme == "ipc" {
-                        if let Some(data) = request
-                            .headers_mut()
-                            .remove("Tauri-VersoRuntime-Invoke-Body")
-                        {
-                            if let Ok(body) =
-                                percent_encoding::percent_decode(data.as_bytes()).decode_utf8()
-                            {
-                                *request.body_mut() = body.as_bytes().to_vec();
-                            } else {
-                                log::error!("IPC invoke body header is not a valid UTF-8 string");
-                            }
-                        }
+                // Since servo doesn't support body in its EmbedderMsg::WebResourceRequested yet,
+                // we use a header instead for now
+                if let Some(data) = request
+                    .headers_mut()
+                    .remove("Tauri-VersoRuntime-Invoke-Body")
+                {
+                    if let Ok(body) =
+                        percent_encoding::percent_decode(data.as_bytes()).decode_utf8()
+                    {
+                        *request.body_mut() = body.into_owned().into_bytes();
+                    } else {
+                        log::error!("IPC invoke body header is not a valid UTF-8 string");
                     }
+                }
+                #[cfg(windows)]
+                let uri = request.uri().to_string();
+                for (scheme, handler) in &uri_scheme_protocols {
                     #[cfg(windows)]
                     let (uri, http_or_https) = (
-                        request.uri().to_string(),
-                        if pending_webview.webview_attributes.use_https_scheme {
-                            "https"
-                        } else {
-                            "http"
-                        },
+                        uri.as_str(),
+                        if use_https { "https" } else { "http" },
                     );
                     #[cfg(windows)]
-                    let is_custom_protocol_uri = is_work_around_uri(&uri, http_or_https, scheme);
+                    let is_custom_protocol_uri = is_work_around_uri(uri, http_or_https, scheme);
                     #[cfg(not(windows))]
                     let is_custom_protocol_uri = request.uri().scheme_str() == Some(scheme);
                     if is_custom_protocol_uri {
@@ -284,13 +309,13 @@ impl<T: UserEvent> RuntimeContext<T> {
             })
             .map_err(|_| tauri_runtime::Error::CreateWindow)?;
 
-        if let Some(navigation_handler) = pending_webview.navigation_handler {
-            if let Err(error) = webview.on_navigation_starting(move |url| navigation_handler(&url))
-            {
-                log::error!(
-                    "Register `on_navigation_starting` failed with {error}, `navigation_handler` will not get called for this window ({label})!"
-                );
-            }
+        if let Some(navigation_handler) = pending_webview.navigation_handler
+            && let Err(error) =
+                webview.on_navigation_starting(move |url| navigation_handler(&url))
+        {
+            log::error!(
+                "Register `on_navigation_starting` failed with {error}, `navigation_handler` will not get called for this window ({label})!"
+            );
         }
 
         let sender = self.event_proxy.clone();
@@ -345,12 +370,17 @@ impl<T: UserEvent> RuntimeContext<T> {
         id: WindowId,
         force: bool,
     ) -> bool {
-        let mut windows = self.windows.lock().unwrap();
-        let Some(window) = windows.get(&id) else {
-            return false;
+        let (label, on_window_event_listeners, webview_weak) = {
+            let windows = self.windows.lock().unwrap();
+            let Some(window) = windows.get(&id) else {
+                return false;
+            };
+            (
+                window.label.clone(),
+                window.on_window_event_listeners.clone(),
+                std::sync::Arc::downgrade(&window.webview),
+            )
         };
-        let label = window.label.clone();
-        let on_window_event_listeners = window.on_window_event_listeners.clone();
 
         if !force {
             let (tx, rx) = channel();
@@ -371,9 +401,7 @@ impl<T: UserEvent> RuntimeContext<T> {
             }
         }
 
-        let webview_weak = std::sync::Arc::downgrade(&window.webview);
-
-        windows.remove(&id);
+        self.windows.lock().unwrap().remove(&id);
         callback(RunEvent::WindowEvent {
             label,
             event: WindowEvent::Destroyed,
@@ -393,8 +421,7 @@ impl<T: UserEvent> RuntimeContext<T> {
             }
         }
 
-        let is_empty = windows.is_empty();
-        if !is_empty {
+        if !self.windows.lock().unwrap().is_empty() {
             return false;
         }
 
@@ -510,24 +537,16 @@ impl<T: UserEvent> RuntimeHandle<T> for VersoRuntimeHandle<T> {
         self.context.run_on_main_thread(f)
     }
 
-    fn primary_monitor(&self) -> Option<Monitor> {
-        self.context
-            .run_on_main_thread_with_event_loop(|e| e.tauri_primary_monitor())
-            .ok()
-            .flatten()
+    fn primary_monitor(&self) -> Result<Option<Monitor>> {
+        self.context.primary_monitor()
     }
 
-    fn monitor_from_point(&self, x: f64, y: f64) -> Option<Monitor> {
-        self.context
-            .run_on_main_thread_with_event_loop(move |e| e.tauri_monitor_from_point(x, y))
-            .ok()
-            .flatten()
+    fn monitor_from_point(&self, x: f64, y: f64) -> Result<Option<Monitor>> {
+        self.context.monitor_from_point(x, y)
     }
 
-    fn available_monitors(&self) -> Vec<Monitor> {
-        self.context
-            .run_on_main_thread_with_event_loop(|e| e.tauri_available_monitors())
-            .unwrap()
+    fn available_monitors(&self) -> Result<Vec<Monitor>> {
+        self.context.available_monitors()
     }
 
     fn cursor_position(&self) -> Result<PhysicalPosition<f64>> {
@@ -536,17 +555,7 @@ impl<T: UserEvent> RuntimeHandle<T> for VersoRuntimeHandle<T> {
     }
 
     fn set_theme(&self, theme: Option<Theme>) {
-        *self.context.prefered_theme.lock().unwrap() = theme;
-        for window in self.context.windows.lock().unwrap().values() {
-            if let Err(error) = window
-                .webview
-                .lock()
-                .unwrap()
-                .set_theme(theme.map(to_verso_theme))
-            {
-                log::error!("Failed to set the theme for webview: {error}");
-            }
-        }
+        self.context.set_webviews_theme(theme);
         let _ = self
             .context
             .run_on_main_thread_with_event_loop(move |e| e.set_theme(theme.map(to_tao_theme)));
@@ -592,6 +601,9 @@ impl<T: UserEvent> RuntimeHandle<T> for VersoRuntimeHandle<T> {
     ) -> Result<()> {
         Ok(())
     }
+
+    /// Unsupported, has no effect when called
+    fn set_device_event_filter(&self, filter: DeviceEventFilter) {}
 }
 
 #[derive(Debug, Clone)]
@@ -616,7 +628,7 @@ impl<T: UserEvent> VersoRuntime<T> {
     fn init(event_loop: EventLoop<Message<T>>) -> Self {
         let context = RuntimeContext {
             windows: Default::default(),
-            prefered_theme: Arc::default(),
+            preferred_theme: Arc::default(),
             event_proxy: event_loop.create_proxy(),
             main_thread: DispatcherMainThreadContext {
                 window_target: event_loop.deref().clone(),
@@ -732,17 +744,7 @@ impl<T: UserEvent> Runtime<T> for VersoRuntime<T> {
     }
 
     fn set_theme(&self, theme: Option<Theme>) {
-        *self.context.prefered_theme.lock().unwrap() = theme;
-        for window in self.context.windows.lock().unwrap().values() {
-            if let Err(error) = window
-                .webview
-                .lock()
-                .unwrap()
-                .set_theme(theme.map(to_verso_theme))
-            {
-                log::error!("Failed to set the theme for webview: {error}");
-            }
-        }
+        self.context.set_webviews_theme(theme);
         self.event_loop.set_theme(theme.map(to_tao_theme));
     }
 
@@ -750,6 +752,11 @@ impl<T: UserEvent> Runtime<T> for VersoRuntime<T> {
     #[cfg(target_os = "macos")]
     #[cfg_attr(docsrs, doc(cfg(target_os = "macos")))]
     fn set_activation_policy(&mut self, activation_policy: tauri_runtime::ActivationPolicy) {}
+
+    /// Unsupported, has no effect when called
+    #[cfg(target_os = "macos")]
+    #[cfg_attr(docsrs, doc(cfg(target_os = "macos")))]
+    fn set_activate_ignoring_other_apps(&mut self, ignore: bool) {}
 
     /// Unsupported, has no effect when called
     #[cfg(target_os = "macos")]

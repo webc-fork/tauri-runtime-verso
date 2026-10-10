@@ -88,12 +88,12 @@ use std::{
 
 static VERSO_PATH: OnceLock<PathBuf> = OnceLock::new();
 
-/// Sets the Verso executable path to ues for the webviews,
+/// Sets the Verso executable path to use for the webviews,
 /// must be called before you create any webviews if you don't have the `externalBin` setup
 ///
 /// ### Example:
 ///
-/// ```
+/// ```no_run
 /// fn main() {
 ///     tauri_runtime_verso::set_verso_path("../verso/target/debug/versoview");
 ///     tauri_runtime_verso::builder()
@@ -127,12 +127,12 @@ fn relative_command_path(name: &str) -> Option<PathBuf> {
 
 static VERSO_RESOURCES_DIRECTORY: Mutex<Option<PathBuf>> = Mutex::new(None);
 
-/// Sets the Verso resources directory to ues for the webviews,
+/// Sets the Verso resources directory to use for the webviews,
 /// note this only affects webviews created after you set this
 ///
 /// ### Example:
 ///
-/// ```
+/// ```no_run
 /// fn main() {
 ///     tauri_runtime_verso::set_verso_path("../verso/target/debug/versoview");
 ///     tauri_runtime_verso::set_verso_resource_directory("../verso/resources");
@@ -157,7 +157,7 @@ fn get_verso_resource_directory() -> Option<PathBuf> {
 ///
 /// ### Example:
 ///
-/// ```
+/// ```no_run
 /// fn main() {
 ///     tauri_runtime_verso::set_verso_path("../verso/target/debug/versoview");
 ///     tauri_runtime_verso::set_verso_resource_directory("../verso/resources");
@@ -171,7 +171,7 @@ pub const INVOKE_SYSTEM_SCRIPTS: &str = include_str!("./invoke-system-initializa
 
 static DEV_TOOLS_PORT: Mutex<Option<u16>> = Mutex::new(None);
 
-/// Sets the Verso devtools port to ues for the webviews, 0 for random port,
+/// Sets the Verso devtools port to use for the webviews, 0 for random port,
 /// note this only affects webviews created after you set this
 ///
 /// Since Verso doesn't have devtools built-in,

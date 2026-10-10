@@ -19,15 +19,15 @@ pub fn create_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
         .icon(app.default_window_icon().unwrap().clone())
         .menu(&menu)
         .show_menu_on_left_click(false)
-        .on_tray_icon_event(|_tray, event| match event {
-            TrayIconEvent::Click {
+        .on_tray_icon_event(|_tray, event| {
+            if let TrayIconEvent::Click {
                 button: MouseButton::Left,
                 button_state: MouseButtonState::Up,
                 ..
-            } => {
+            } = event
+            {
                 dbg!("Tray icon clicked!");
             }
-            _ => {}
         })
         .on_menu_event(|_app, event| {
             if event.id == CLICK_ME_ID {

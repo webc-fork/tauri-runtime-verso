@@ -1,7 +1,7 @@
 #![allow(unused_variables)]
 
 use tauri_runtime::{
-    Error, Result, UserEvent, WebviewDispatch, WebviewEventId,
+    Result, UserEvent, WebviewDispatch, WebviewEventId,
     dpi::{PhysicalPosition, PhysicalSize, Position, Size},
     window::{WebviewEvent, WindowId},
 };
@@ -13,7 +13,10 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use crate::{RuntimeContext, VersoRuntime};
+use crate::{
+    RuntimeContext, VersoRuntime,
+    utils::with_controller,
+};
 
 /// The Tauri [`WebviewDispatch`] for [`VersoRuntime`].
 #[derive(Clone)]
@@ -42,7 +45,7 @@ impl<T: UserEvent> WebviewDispatch<T> for VersoWebviewDispatcher<T> {
 
     /// Unsupported, has no effect when called, the callback will not be called
     fn on_webview_event<F: Fn(&WebviewEvent) + Send + 'static>(&self, f: F) -> WebviewEventId {
-        self.context.next_window_event_id()
+        self.context.next_webview_event_id()
     }
 
     /// Unsupported, has no effect when called, the callback will not be called
@@ -56,21 +59,20 @@ impl<T: UserEvent> WebviewDispatch<T> for VersoWebviewDispatcher<T> {
     }
 
     fn eval_script<S: Into<String>>(&self, script: S) -> Result<()> {
-        self.webview
-            .lock()
-            .unwrap()
-            .execute_script(script.into())
-            .map_err(|_| Error::FailedToSendMessage)?;
+        with_controller(&self.webview, |c| c.execute_script(script.into()))
+    }
+
+    /// Unsupported, has no effect when called, the callback will not be called
+    fn eval_script_with_callback<S: Into<String>>(
+        &self,
+        script: S,
+        callback: impl Fn(String) + Send + 'static,
+    ) -> Result<()> {
         Ok(())
     }
 
     fn url(&self) -> Result<String> {
-        Ok(self
-            .webview
-            .lock()
-            .unwrap()
-            .get_current_url()
-            .map_err(|_| Error::FailedToSendMessage)?
+        Ok(with_controller(&self.webview, |c| c.get_current_url())?
             .to_string())
     }
 
@@ -86,22 +88,12 @@ impl<T: UserEvent> WebviewDispatch<T> for VersoWebviewDispatcher<T> {
     }
 
     fn size(&self) -> Result<PhysicalSize<u32>> {
-        let size = self
-            .webview
-            .lock()
-            .unwrap()
-            .get_inner_size()
-            .map_err(|_| Error::FailedToSendMessage)?;
+        let size = with_controller(&self.webview, |c| c.get_inner_size())?;
         Ok(size)
     }
 
     fn navigate(&self, url: Url) -> Result<()> {
-        self.webview
-            .lock()
-            .unwrap()
-            .navigate(url)
-            .map_err(|_| Error::FailedToSendMessage)?;
-        Ok(())
+        with_controller(&self.webview, |c| c.navigate(url))
     }
 
     /// Unsupported, has no effect when called
@@ -193,12 +185,7 @@ impl<T: UserEvent> WebviewDispatch<T> for VersoWebviewDispatcher<T> {
     }
 
     fn reload(&self) -> Result<()> {
-        self.webview
-            .lock()
-            .unwrap()
-            .reload()
-            .map_err(|_| Error::FailedToSendMessage)?;
-        Ok(())
+        with_controller(&self.webview, |c| c.reload())
     }
 
     /// Unsupported, always returns an empty vector
@@ -209,5 +196,15 @@ impl<T: UserEvent> WebviewDispatch<T> for VersoWebviewDispatcher<T> {
     /// Unsupported, always returns an empty vector
     fn cookies(&self) -> Result<Vec<tauri_runtime::Cookie<'static>>> {
         Ok(Vec::new())
+    }
+
+    /// Unsupported, has no effect when called
+    fn set_cookie(&self, cookie: tauri_runtime::Cookie<'_>) -> Result<()> {
+        Ok(())
+    }
+
+    /// Unsupported, has no effect when called
+    fn delete_cookie(&self, cookie: tauri_runtime::Cookie<'_>) -> Result<()> {
+        Ok(())
     }
 }
