@@ -31,6 +31,15 @@ pub use versoview_build;
 /// Downloads and extracts the pre-built versoview executable
 /// to `./versoview/versoview(.exe)` relative to the directory containing your `Cargo.toml` file
 pub fn get_verso_as_external_bin() -> io::Result<()> {
+    get_verso_as_external_bin_named("versoview")
+}
+
+/// Same as [`get_verso_as_external_bin`], but names the executable `<name>-<target-triple>`,
+/// which must match the `externalBin` entry in the tauri config.
+///
+/// Useful when multiple packages in one cargo workspace each get their own copy of the sidecar,
+/// otherwise their `tauri_build::build` calls race on the same copy in the target directory.
+pub fn get_verso_as_external_bin_named(name: &str) -> io::Result<()> {
     let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap();
     if target_os == "android" || target_os == "ios" {
         return Err(io::Error::other(
@@ -44,8 +53,8 @@ pub fn get_verso_as_external_bin() -> io::Result<()> {
     let output_directory = PathBuf::from(project_directory).join("versoview");
 
     let extension = if cfg!(windows) { ".exe" } else { "" };
-    let output_executable = output_directory.join(format!("versoview-{target_triple}{extension}"));
-    let output_version = output_directory.join("versoview-version.txt");
+    let output_executable = output_directory.join(format!("{name}-{target_triple}{extension}"));
+    let output_version = output_directory.join(format!("{name}-version.txt"));
 
     if std::fs::exists(&output_executable)?
         && std::fs::read_to_string(&output_version).unwrap_or_default()
@@ -92,6 +101,12 @@ fn wait_for_executable_readable(path: &std::path::Path) {
 /// Windows while the antivirus scans a freshly copied versoview executable,
 /// so remove it here with retries instead.
 pub fn remove_stale_sidecar_copy() {
+    remove_stale_sidecar_copy_named("versoview")
+}
+
+/// Same as [`remove_stale_sidecar_copy`] for a sidecar fetched
+/// with [`get_verso_as_external_bin_named`].
+pub fn remove_stale_sidecar_copy_named(name: &str) {
     let extension = if cfg!(windows) { ".exe" } else { "" };
     let target_triple = std::env::var("TARGET").unwrap();
     let sidecar_copy = std::env::var_os("OUT_DIR")
@@ -99,7 +114,7 @@ pub fn remove_stale_sidecar_copy() {
         // OUT_DIR is `<target>/<profile>/build/<package>/out`,
         // the sidecar copy lives in `<target>/<profile>`
         .and_then(|out_dir| out_dir.ancestors().nth(3).map(|dir| dir.to_path_buf()))
-        .map(|dir| dir.join(format!("versoview-{target_triple}{extension}")));
+        .map(|dir| dir.join(format!("{name}-{target_triple}{extension}")));
 
     let Some(sidecar_copy) = sidecar_copy else {
         return;

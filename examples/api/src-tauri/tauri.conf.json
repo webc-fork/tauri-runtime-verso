@@ -17,7 +17,7 @@
       "../../.icons/icon.png"
     ],
     "externalBin": [
-      "versoview/versoview"
+      "versoview/verso-api"
     ]
   }
 }
