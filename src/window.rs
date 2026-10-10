@@ -258,7 +258,7 @@ impl WindowBuilder for VersoWindowBuilder {
         target_os = "netbsd",
         target_os = "openbsd"
     ))]
-    fn transient_for(self, parent: &impl gtk::glib::IsA<gtk::Window>) -> Self {
+    fn transient_for(self, parent: *mut std::ffi::c_void) -> Self {
         self
     }
 
@@ -491,7 +491,8 @@ impl<T: UserEvent> WindowDispatch<T> for VersoWindowDispatcher<T> {
         Ok(from_verso_theme(theme))
     }
 
-    /// Unsupported, panics when called
+    /// Unsupported, always fails with an error,
+    /// the window lives in the versoview process, there's no gtk handle to expose
     #[cfg(any(
         target_os = "linux",
         target_os = "dragonfly",
@@ -499,11 +500,12 @@ impl<T: UserEvent> WindowDispatch<T> for VersoWindowDispatcher<T> {
         target_os = "netbsd",
         target_os = "openbsd"
     ))]
-    fn gtk_window(&self) -> Result<gtk::ApplicationWindow> {
-        unimplemented!()
+    fn gtk_window(&self) -> Result<*mut std::ffi::c_void> {
+        Err(Error::FailedToSendMessage)
     }
 
-    /// Unsupported, panics when called
+    /// Unsupported, always fails with an error,
+    /// the window lives in the versoview process, there's no gtk handle to expose
     #[cfg(any(
         target_os = "linux",
         target_os = "dragonfly",
@@ -511,8 +513,8 @@ impl<T: UserEvent> WindowDispatch<T> for VersoWindowDispatcher<T> {
         target_os = "netbsd",
         target_os = "openbsd"
     ))]
-    fn default_vbox(&self) -> Result<gtk::Box> {
-        unimplemented!()
+    fn default_vbox(&self) -> Result<*mut std::ffi::c_void> {
+        Err(Error::FailedToSendMessage)
     }
 
     /// Unsupported, has no effect when called

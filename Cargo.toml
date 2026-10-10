@@ -31,9 +31,6 @@ log = "0.4"
 [target."cfg(windows)".dependencies]
 windows = "0.62"
 
-[target."cfg(any(target_os = \"linux\", target_os = \"dragonfly\", target_os = \"freebsd\", target_os = \"openbsd\", target_os = \"netbsd\"))".dependencies]
-gtk = { version = "0.18", features = ["v3_24"] }
-
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2-app-kit = { version = "0.3", features = ["NSScreen"] }
 

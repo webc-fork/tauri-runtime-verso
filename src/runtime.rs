@@ -495,6 +495,8 @@ impl<T: UserEvent> RuntimeHandle<T> for VersoRuntimeHandle<T> {
     }
 
     /// Unsupported, has no effect
+    #[cfg(target_os = "macos")]
+    #[cfg_attr(docsrs, doc(cfg(target_os = "macos")))]
     fn set_activation_policy(
         &self,
         activation_policy: tauri_runtime::ActivationPolicy,
