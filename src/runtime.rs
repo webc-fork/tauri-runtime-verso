@@ -286,7 +286,7 @@ impl<T: UserEvent> RuntimeContext<T> {
                         #[cfg(windows)]
                         {
                             if let Ok(reverted) =
-                                revert_custom_protocol_work_around(uri.as_str(), http_or_https, scheme)
+                                revert_custom_protocol_work_around(uri, http_or_https, scheme)
                             {
                                 *request.uri_mut() = reverted
                             } else {
