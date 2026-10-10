@@ -26,8 +26,8 @@ jobs:
           - platform: ubuntu-latest
           - platform: macos-latest
           - platform: windows-latest
-          # There is no prebuilt versoview for aarch64 linux yet, so the helloworld example,
-          # which downloads it in its build script, has to be excluded there
+          # There is no prebuilt versoview for aarch64 linux yet, so the examples,
+          # which download it in their build scripts, have to be excluded there
           - platform: ubuntu-24.04-arm
             no_prebuilt_versoview: true
     runs-on: ${{ matrix.platform }}
@@ -44,15 +44,15 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+          sudo apt-get install -y --no-install-recommends libgtk-3-dev libxdo-dev libayatana-appindicator3-dev
 
       - uses: Swatinem/rust-cache@v2
 
       - name: Clippy
-        run: cargo clippy --workspace ${{ matrix.no_prebuilt_versoview && '--exclude helloworld' || '' }} --all-targets -- -D warnings
+        run: cargo clippy --workspace ${{ matrix.no_prebuilt_versoview && '--exclude helloworld --exclude api' || '' }} --all-targets -- -D warnings
 
       - name: Test
-        run: cargo test --workspace ${{ matrix.no_prebuilt_versoview && '--exclude helloworld' || '' }}
+        run: cargo test --workspace ${{ matrix.no_prebuilt_versoview && '--exclude helloworld --exclude api' || '' }}
 
       - name: Build Hello World example
         if: matrix.no_prebuilt_versoview != true

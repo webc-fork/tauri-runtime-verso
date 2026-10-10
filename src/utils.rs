@@ -17,6 +17,7 @@ pub(crate) fn with_controller<T, E>(
 pub fn to_verso_theme(theme: tauri_utils::Theme) -> verso::Theme {
     match theme {
         tauri_utils::Theme::Dark => verso::Theme::Dark,
+        // `Theme` is `#[non_exhaustive]`, map future variants to light as before
         _ => verso::Theme::Light,
     }
 }
@@ -31,6 +32,7 @@ pub fn from_verso_theme(theme: verso::Theme) -> tauri_utils::Theme {
 pub fn to_tao_theme(theme: tauri_utils::Theme) -> tao::window::Theme {
     match theme {
         tauri_utils::Theme::Dark => tao::window::Theme::Dark,
+        // `Theme` is `#[non_exhaustive]`, map future variants to light as before
         _ => tao::window::Theme::Light,
     }
 }
