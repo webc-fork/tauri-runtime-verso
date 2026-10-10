@@ -10,4 +10,4 @@ workspace = true
 versoview_build = { workspace = true }
 
 [dev-dependencies]
-tauri-build = "2"
+tauri-build = "~3.0.0-alpha.3"

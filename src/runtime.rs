@@ -10,7 +10,7 @@ use tao::{
 };
 use tauri_runtime::{
     DeviceEventFilter, Error, EventLoopProxy, ExitRequestedEventAction, Result, RunEvent, Runtime,
-    RuntimeHandle, RuntimeInitArgs, UserEvent, WindowEventId,
+    RuntimeHandle, RuntimeInitArgs, RuntimeInitAttrs, UserEvent, WindowEventId,
     dpi::PhysicalPosition,
     monitor::Monitor,
     webview::{DetachedWebview, PendingWebview},
@@ -204,9 +204,12 @@ impl<T: UserEvent> RuntimeContext<T> {
     ) -> Result<DetachedWindow<T, R>> {
         let label = pending.label;
         let Some(pending_webview) = pending.webview else {
-            return Err(tauri_runtime::Error::CreateWindow);
+            return Err(tauri_runtime::Error::CreateWindow(
+                "verso only supports creating windows with a webview".into(),
+            ));
         };
 
+        let devtools = pending_webview.webview_attributes.devtools;
         let window_id = self.next_window_id();
         let webview_id = self.next_webview_id();
 
@@ -307,7 +310,7 @@ impl<T: UserEvent> RuntimeContext<T> {
                 }
                 response_fn(None);
             })
-            .map_err(|_| tauri_runtime::Error::CreateWindow)?;
+            .map_err(|error| tauri_runtime::Error::CreateWindow(Box::new(error)))?;
 
         if let Some(navigation_handler) = pending_webview.navigation_handler
             && let Err(error) =
@@ -323,7 +326,7 @@ impl<T: UserEvent> RuntimeContext<T> {
             .on_close_requested(move || {
                 let _ = sender.send_event(Message::CloseWindow(window_id));
             })
-            .map_err(|_| tauri_runtime::Error::CreateWindow)?;
+            .map_err(|error| tauri_runtime::Error::CreateWindow(Box::new(error)))?;
 
         let on_window_event_listeners = Arc::new(Mutex::new(HashMap::new()));
 
@@ -355,6 +358,7 @@ impl<T: UserEvent> RuntimeContext<T> {
                     },
                 },
                 use_https_scheme: false,
+                devtools,
             }),
         })
     }
@@ -491,8 +495,6 @@ impl<T: UserEvent> RuntimeHandle<T> for VersoRuntimeHandle<T> {
     }
 
     /// Unsupported, has no effect
-    #[cfg(target_os = "macos")]
-    #[cfg_attr(docsrs, doc(cfg(target_os = "macos")))]
     fn set_activation_policy(
         &self,
         activation_policy: tauri_runtime::ActivationPolicy,
@@ -523,13 +525,36 @@ impl<T: UserEvent> RuntimeHandle<T> for VersoRuntimeHandle<T> {
         self.context.create_window(pending, after_window_creation)
     }
 
-    /// Unsupported, always fail with [`tauri_runtime::Error::CreateWindow`]
+    /// Unsupported, always fail with [`tauri_runtime::Error::CreateWebview`]
     fn create_webview(
         &self,
         window_id: WindowId,
         pending: PendingWebview<T, Self::Runtime>,
     ) -> Result<DetachedWebview<T, Self::Runtime>> {
-        Err(tauri_runtime::Error::CreateWindow)
+        Err(tauri_runtime::Error::CreateWebview(
+            "verso doesn't support creating additional webviews yet".into(),
+        ))
+    }
+
+    /// Returns the URL the given custom protocol is served over.
+    fn custom_scheme_url(&self, scheme: &str, https: bool) -> String {
+        // On Windows, custom protocols are served over http(s) with the scheme
+        // encoded in the host, see `is_work_around_uri`
+        #[cfg(windows)]
+        {
+            let http_or_https = if https { "https" } else { "http" };
+            format!("{http_or_https}://{scheme}.tauri.localhost")
+        }
+        #[cfg(not(windows))]
+        {
+            let _ = https;
+            format!("{scheme}://localhost")
+        }
+    }
+
+    /// The version of the versoview executable the webviews run on.
+    fn webview_version(&self) -> Result<String> {
+        Ok(versoview_build::VERSO_VERSION.to_string())
     }
 
     /// Run a task on the main thread.
@@ -647,7 +672,7 @@ impl<T: UserEvent> VersoRuntime<T> {
 
     fn init_with_builder(
         mut event_loop_builder: EventLoopBuilder<Message<T>>,
-        args: RuntimeInitArgs,
+        args: RuntimeInitArgs<VersoRuntimeInitAttrs>,
     ) -> Self {
         #[cfg(windows)]
         if let Some(hook) = args.msg_hook {
@@ -670,15 +695,30 @@ impl<T: UserEvent> VersoRuntime<T> {
     }
 }
 
+/// The initialization attributes of [`VersoRuntime`], pass it to [`tauri::Builder::runtime`] to select this runtime.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct VersoRuntimeInitAttrs;
+
+impl<T: UserEvent> RuntimeInitAttrs<T> for VersoRuntimeInitAttrs {
+    type Runtime = VersoRuntime<T>;
+}
+
 impl<T: UserEvent> Runtime<T> for VersoRuntime<T> {
     type WindowDispatcher = VersoWindowDispatcher<T>;
     type WebviewDispatcher = VersoWebviewDispatcher<T>;
     type Handle = VersoRuntimeHandle<T>;
     type EventLoopProxy = EventProxy<T>;
+    /// Verso has no runtime specific webview attributes yet
+    type RuntimeWebviewAttributes = ();
+    /// The webview runs in the versoview process, there's no handle to expose
+    type Webview = ();
+    type RuntimeInitAttrs = VersoRuntimeInitAttrs;
+    /// Unsupported, verso doesn't support opening new windows from web content yet
+    type WindowOpener = ();
 
     /// `args.msg_hook` hooks on the event loop of this process,
     /// this doesn't work for the event loop of versoview instances
-    fn new(args: RuntimeInitArgs) -> Result<Self> {
+    fn new(args: RuntimeInitArgs<VersoRuntimeInitAttrs>) -> Result<Self> {
         let event_loop_builder = EventLoopBuilder::<Message<T>>::with_user_event();
         Ok(Self::init_with_builder(event_loop_builder, args))
     }
@@ -686,7 +726,7 @@ impl<T: UserEvent> Runtime<T> for VersoRuntime<T> {
     /// `args.msg_hook` hooks on the event loop of this process,
     /// this doesn't work for the event loop of versoview instances
     #[cfg(any(windows, target_os = "linux"))]
-    fn new_any_thread(args: RuntimeInitArgs) -> Result<Self> {
+    fn new_any_thread(args: RuntimeInitArgs<VersoRuntimeInitAttrs>) -> Result<Self> {
         let mut event_loop_builder = EventLoopBuilder::<Message<T>>::with_user_event();
         #[cfg(target_os = "linux")]
         use tao::platform::unix::EventLoopBuilderExtUnix;
@@ -718,13 +758,15 @@ impl<T: UserEvent> Runtime<T> for VersoRuntime<T> {
         self.context.create_window(pending, after_window_creation)
     }
 
-    /// Unsupported, always fail with [`tauri_runtime::Error::CreateWindow`]
+    /// Unsupported, always fail with [`tauri_runtime::Error::CreateWebview`]
     fn create_webview(
         &self,
         window_id: WindowId,
         pending: PendingWebview<T, Self>,
     ) -> Result<DetachedWebview<T, Self>> {
-        Err(tauri_runtime::Error::CreateWindow)
+        Err(tauri_runtime::Error::CreateWebview(
+            "verso doesn't support creating additional webviews yet".into(),
+        ))
     }
 
     fn primary_monitor(&self) -> Option<Monitor> {

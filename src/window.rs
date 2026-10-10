@@ -325,18 +325,8 @@ impl WindowBuilder for VersoWindowBuilder {
         self
     }
 
-    #[cfg(any(not(target_os = "macos"), feature = "macos-private-api"))]
-    #[cfg_attr(
-        docsrs,
-        doc(cfg(any(not(target_os = "macos"), feature = "macos-private-api")))
-    )]
     fn transparent(mut self, transparent: bool) -> Self {
         self.verso_builder = self.verso_builder.transparent(transparent);
-        self
-    }
-
-    #[cfg(all(target_os = "macos", not(feature = "macos-private-api")))]
-    fn transparent(self, transparent: bool) -> Self {
         self
     }
 
@@ -547,12 +537,14 @@ impl<T: UserEvent> WindowDispatch<T> for VersoWindowDispatcher<T> {
         self.context.create_window(pending, after_window_creation)
     }
 
-    /// Unsupported, always fail with [`tauri_runtime::Error::CreateWindow`]
+    /// Unsupported, always fail with [`tauri_runtime::Error::CreateWebview`]
     fn create_webview(
         &mut self,
         pending: PendingWebview<T, Self::Runtime>,
     ) -> Result<DetachedWebview<T, Self::Runtime>> {
-        Err(tauri_runtime::Error::CreateWindow)
+        Err(tauri_runtime::Error::CreateWebview(
+            "verso doesn't support creating additional webviews yet".into(),
+        ))
     }
 
     /// Unsupported, has no effect when called

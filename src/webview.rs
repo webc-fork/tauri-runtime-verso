@@ -1,7 +1,7 @@
 #![allow(unused_variables)]
 
 use tauri_runtime::{
-    Result, UserEvent, WebviewDispatch, WebviewEventId,
+    Result, Runtime, UserEvent, WebviewDispatch, WebviewEventId,
     dpi::{PhysicalPosition, PhysicalSize, Position, Size},
     window::{WebviewEvent, WindowId},
 };
@@ -48,8 +48,12 @@ impl<T: UserEvent> WebviewDispatch<T> for VersoWebviewDispatcher<T> {
         self.context.next_webview_event_id()
     }
 
-    /// Unsupported, has no effect when called, the callback will not be called
-    fn with_webview<F: FnOnce(Box<dyn std::any::Any>) + Send + 'static>(&self, f: F) -> Result<()> {
+    /// Unsupported, has no effect when called, the callback will not be called,
+    /// the webview runs in the versoview process and has no handle to expose
+    fn with_webview<F: FnOnce(<Self::Runtime as Runtime<T>>::Webview) + Send + 'static>(
+        &self,
+        f: F,
+    ) -> Result<()> {
         Ok(())
     }
 
@@ -94,6 +98,30 @@ impl<T: UserEvent> WebviewDispatch<T> for VersoWebviewDispatcher<T> {
 
     fn navigate(&self, url: Url) -> Result<()> {
         with_controller(&self.webview, |c| c.navigate(url))
+    }
+
+    /// Unsupported, always returns false,
+    /// requires a `CanGoBack` IPC to the versoview process
+    fn can_go_back(&self) -> Result<bool> {
+        Ok(false)
+    }
+
+    /// Unsupported, has no effect when called,
+    /// requires a `GoBack` IPC to the versoview process
+    fn go_back(&self) -> Result<()> {
+        Ok(())
+    }
+
+    /// Unsupported, always returns false,
+    /// requires a `CanGoForward` IPC to the versoview process
+    fn can_go_forward(&self) -> Result<bool> {
+        Ok(false)
+    }
+
+    /// Unsupported, has no effect when called,
+    /// requires a `GoForward` IPC to the versoview process
+    fn go_forward(&self) -> Result<()> {
+        Ok(())
     }
 
     /// Unsupported, has no effect when called

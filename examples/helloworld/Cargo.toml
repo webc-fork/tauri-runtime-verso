@@ -5,15 +5,13 @@ edition = "2024"
 
 [build-dependencies]
 tauri-runtime-verso-build = { path = "../../tauri-runtime-verso-build" }
-tauri-build = { version = "2", features = [] }
+tauri-build = { version = "~3.0.0-alpha.3", features = [] }
 
 [dependencies]
-tauri = { version = "2", default-features = false, features = [
+tauri = { version = "~3.0.0-alpha.4", default-features = false, features = [
     # Default features
-    # "wry",
     # "compression",
     "common-controls-v6",
-    # "x11",
     # "dynamic-acl",
     # Additional features
     # "tray-icon",

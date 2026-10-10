@@ -64,10 +64,6 @@
 //! ```
 //!
 //! Then go to `about:debugging` in Firefox and connect to `localhost:1234` there
-//!
-//! ## Cargo features
-//!
-//! - **macos-private-api**: Matching with Tauri's macos-private-api feature, required if you use that
 
 mod event_loop_ext;
 mod monitor;
@@ -76,7 +72,9 @@ mod utils;
 mod webview;
 mod window;
 
-pub use runtime::{EventProxy, RuntimeContext, VersoRuntime, VersoRuntimeHandle};
+pub use runtime::{
+    EventProxy, RuntimeContext, VersoRuntime, VersoRuntimeHandle, VersoRuntimeInitAttrs,
+};
 pub use webview::VersoWebviewDispatcher;
 pub use window::{VersoWindowBuilder, VersoWindowDispatcher};
 
