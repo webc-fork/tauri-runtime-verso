@@ -57,7 +57,7 @@
 //!
 //! Since Verso doesn't have a devtools built-in, you'll need to use the one from the Firefox, first put in this in your code
 //!
-//! ```rust
+//! ```rust,no_run
 //! // This will make the webviews created afters this open up a devtools server on this port,
 //! // setting it to 0 for a random port
 //! tauri_runtime_verso::set_verso_devtools_port(1234);
